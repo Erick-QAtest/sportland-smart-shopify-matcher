@@ -1,0 +1,36 @@
+[
+  {
+    "variant_id": "gid://shopify/ProductVariant/1",
+    "variant_legacy_id": "1",
+    "product_id": "gid://shopify/Product/10",
+    "product_legacy_id": "10",
+    "product_handle": "abc-shoe",
+    "product_title": "ABC Shoe",
+    "product_status": "ACTIVE",
+    "variant_title": "27",
+    "sku": "ABC-27",
+    "size": "27",
+    "inventory_total": 2,
+    "price": "1099.00",
+    "compare_at_price": "1700.00",
+    "inventory_item_id": "gid://shopify/InventoryItem/100",
+    "locations": [{"location_id": "gid://shopify/Location/1", "location_name": "Store A", "available": 2}]
+  },
+  {
+    "variant_id": "gid://shopify/ProductVariant/2",
+    "variant_legacy_id": "2",
+    "product_id": "gid://shopify/Product/20",
+    "product_legacy_id": "20",
+    "product_handle": "def-shoe",
+    "product_title": "DEF Shoe",
+    "product_status": "ACTIVE",
+    "variant_title": "26",
+    "sku": "DEF-26",
+    "size": "26",
+    "inventory_total": 0,
+    "price": "999.00",
+    "compare_at_price": "",
+    "inventory_item_id": "gid://shopify/InventoryItem/200",
+    "locations": [{"location_id": "gid://shopify/Location/1", "location_name": "Store A", "available": 0}]
+  }
+]

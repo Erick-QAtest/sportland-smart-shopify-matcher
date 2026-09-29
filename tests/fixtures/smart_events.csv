@@ -1,0 +1,5 @@
+ts_log,event_uuid,event_hash,fecha_evento,telefono,client_uuid,tipo_evento_id,tipo_evento_nombre,detalle_evento,silencio_flag,sku_producto,monto,canal,pct,moneda,actor,device,origen,meta_json,status,pg_evento_id,pg_sync_ts
+2026-09-20T10:00:00Z,e1,h1,2026-09-20T09:59:00Z,,11111111-1111-1111-1111-111111111111,4,PREGUNTA_TALLA_PRECIO,preguntó talla,false,ABC-27,,whatsapp,,MXN,qa,web,sheets_manual,"{}",LOGGED,100,
+2026-09-20T10:10:00Z,e2,h2,2026-09-20T10:09:00Z,,22222222-2222-2222-2222-222222222222,4,PREGUNTA_TALLA_PRECIO,preguntó talla,false,DEF-26,,whatsapp,,MXN,qa,web,sheets_manual,"{}",LOGGED,101,
+2026-09-20T10:20:00Z,e3,h3,2026-09-20T10:19:00Z,,33333333-3333-3333-3333-333333333333,21,PREGUNTA_MODELO_ESPECIFICO,modelo específico,false,,,whatsapp,,MXN,qa,web,sheets_manual,"{}",LOGGED,102,
+2026-09-20T10:30:00Z,e4,h4,2026-09-20T10:29:00Z,,44444444-4444-4444-4444-444444444444,4,PREGUNTA_TALLA_PRECIO,preguntó talla,false,GHI-27,,whatsapp,,MXN,qa,web,sheets_manual,"{}",ERROR,,
