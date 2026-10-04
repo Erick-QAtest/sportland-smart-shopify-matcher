@@ -38,12 +38,13 @@ echo "========================================"
 echo "SPORTLAND DAILY START: $(date)"
 echo "========================================"
 
-run_step "1/6 Memory Orchestrator" python run_memory_daily.py
-run_step "2/6 Finanzas" python run_finance.py
-run_step "3/6 Demand Intelligence" python run_decisions_v21.py
-run_step "4/6 Behavior Intelligence" python run_decisions_v23.py
-run_step "5/6 PostgreSQL Backup" python run_ops_backup.py
-run_step "6/6 Ops Health" python run_ops_health.py
+run_step "1/7 Memory Orchestrator" python run_memory_daily.py
+run_step "2/7 Finanzas" python run_finance.py
+run_step "3/7 Demand Intelligence" python run_decisions_v21.py
+run_step "4/7 Behavior Intelligence" python run_decisions_v23.py
+run_step "5/7 Growth Integration" python run_growth_plan.py
+run_step "6/7 PostgreSQL Backup" python run_ops_backup.py
+run_step "7/7 Ops Health" python run_ops_health.py
 
 python run_ops_status.py ok || true
 python run_ops_health.py || true
