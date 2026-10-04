@@ -33,6 +33,14 @@ def state_from_match(match_status: str) -> str:
     return "UNRESOLVED"
 
 
+def state_after_sync(existing_state: str | None, incoming_state: str) -> str:
+    """Never reopen lifecycle-terminal intents during a daily matcher sync."""
+    existing = _text(existing_state).upper()
+    if existing in {"PURCHASED", "EXPIRED"}:
+        return existing
+    return _text(incoming_state).upper() or "UNRESOLVED"
+
+
 def read_match_rows(path: str | Path) -> list[dict[str, str]]:
     p = Path(path)
     if not p.exists():
@@ -129,9 +137,15 @@ def sync_match_rows(
             }
 
             existing = conn.execute(
-                "SELECT intent_id FROM demand_intents WHERE source_event_id = %s",
+                "SELECT intent_id, state FROM demand_intents WHERE source_event_id = %s",
                 (payload["source_event_id"],),
             ).fetchone()
+
+            if existing:
+                payload["state"] = state_after_sync(
+                    existing["state"],
+                    payload["state"],
+                )
 
             result = conn.execute(
                 """
@@ -161,8 +175,13 @@ def sync_match_rows(
                     match_status = EXCLUDED.match_status,
                     match_confidence = EXCLUDED.match_confidence,
                     state = EXCLUDED.state,
-                    resolution = EXCLUDED.resolution,
-                    metadata = EXCLUDED.metadata,
+                    resolution = CASE
+                        WHEN demand_intents.state IN ('PURCHASED', 'EXPIRED')
+                            THEN demand_intents.resolution
+                        ELSE EXCLUDED.resolution
+                    END,
+                    metadata = COALESCE(demand_intents.metadata, '{}'::jsonb)
+                        || EXCLUDED.metadata,
                     last_seen_at = now()
                 RETURNING intent_id
                 """,
