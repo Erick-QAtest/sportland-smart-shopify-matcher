@@ -222,3 +222,41 @@ def import_growth_results(
             stats["inserted"] += 1
 
     return stats
+
+def read_latest_growth_actions_for_calibration(conn: Connection) -> list[dict[str, Any]]:
+    latest = conn.execute(
+        """
+        SELECT growth_run_id
+        FROM growth_runs
+        ORDER BY created_at DESC, growth_run_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+
+    if not latest:
+        return []
+
+    rows = conn.execute(
+        """
+        SELECT
+            growth_action_id,
+            channel,
+            objective,
+            priority_band,
+            initial_priority_band,
+            status,
+            sku,
+            product_title,
+            source_type,
+            source_ref,
+            metadata
+        FROM growth_actions
+        WHERE growth_run_id = %s
+          AND status IN ('DRAFT', 'APPROVED', 'MEASURED')
+        ORDER BY growth_action_id
+        """,
+        (latest["growth_run_id"],),
+    ).fetchall()
+
+    return [dict(row) for row in rows]
+

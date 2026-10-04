@@ -13,6 +13,7 @@ from smart_growth.calibration import (
     calibrate_action,
 )
 from smart_growth.measurement_v41 import read_performance_context
+from smart_growth.store import read_latest_growth_actions_for_calibration
 from smart_growth.reporting_v41 import (
     write_csv,
     write_json,
@@ -44,33 +45,7 @@ def main() -> int:
         apply_migrations(conn)
         performance = read_performance_context(conn)
 
-        rows = conn.execute(
-            """
-            WITH latest_growth_run AS (
-                SELECT growth_run_id
-                FROM growth_runs
-                ORDER BY created_at DESC, growth_run_id DESC
-                LIMIT 1
-            )
-            SELECT
-                ga.growth_action_id,
-                ga.channel,
-                ga.objective,
-                ga.priority_band,
-                ga.initial_priority_band,
-                ga.status,
-                ga.sku,
-                ga.product_title,
-                ga.source_type,
-                ga.source_ref,
-                ga.metadata
-            FROM growth_actions ga
-            JOIN latest_growth_run l
-              ON l.growth_run_id = ga.growth_run_id
-            WHERE ga.status IN ('DRAFT', 'APPROVED', 'MEASURED')
-            ORDER BY ga.growth_action_id
-            """
-        ).fetchall()
+        rows = read_latest_growth_actions_for_calibration(conn)
 
         calibrated_rows = []
         with conn.transaction():

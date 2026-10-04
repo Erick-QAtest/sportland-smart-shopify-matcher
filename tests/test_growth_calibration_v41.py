@@ -138,3 +138,39 @@ def test_bad_performance_adds_penalty():
     }, RULES)
     assert adj < 0
     assert context["performance_used"] is True
+
+
+def test_calibration_uses_only_latest_growth_run():
+    from smart_growth.store import read_latest_growth_actions_for_calibration
+
+    class Result:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def fetchone(self):
+            return self.rows[0] if self.rows else None
+
+        def fetchall(self):
+            return self.rows
+
+    class FakeConnection:
+        def execute(self, sql, params=None):
+            if "FROM growth_runs" in sql:
+                return Result([{"growth_run_id": "NEW-RUN"}])
+
+            if "FROM growth_actions" in sql:
+                assert "growth_run_id = %s" in sql
+                assert params == ("NEW-RUN",)
+
+                data = {
+                    "OLD-RUN": [{"sku": "OLD-1"}],
+                    "NEW-RUN": [{"sku": "NEW-1"}],
+                }
+                return Result(data[params[0]])
+
+            raise AssertionError(f"Unexpected query: {sql}")
+
+    actions = read_latest_growth_actions_for_calibration(FakeConnection())
+
+    assert {row["sku"] for row in actions} == {"NEW-1"}
+
