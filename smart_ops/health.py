@@ -3,12 +3,20 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import html
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 from smart_memory.config import MemoryConfig
 from smart_memory.db import connect
 from smart_ops.status import load_status
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _parse_dt(value: Any) -> datetime | None:
@@ -40,6 +48,8 @@ def classify_health(
     memory_status: str | None,
     backup_verified: bool,
     backup_age_hours: float | None,
+    mirror_required: bool = False,
+    mirror_verified: bool | None = None,
 ) -> tuple[str, list[str]]:
     reasons: list[str] = []
 
@@ -55,6 +65,15 @@ def classify_health(
         reasons.append("La última corrida de Memory falló")
         return "FAIL", reasons
 
+    if not backup_verified:
+        reasons.append("No existe un backup PostgreSQL verificado")
+        if mirror_required:
+            return "FAIL", reasons
+
+    if mirror_required and mirror_verified is not True:
+        reasons.append("El mirror externo obligatorio no está verificado")
+        return "FAIL", reasons
+
     if daily_status is None:
         reasons.append("Aún no hay estado diario registrado")
     elif daily_age_hours is not None and daily_age_hours > 36:
@@ -63,9 +82,7 @@ def classify_health(
     if memory_status is None:
         reasons.append("No hay corrida Memory registrada")
 
-    if not backup_verified:
-        reasons.append("No existe un backup PostgreSQL verificado")
-    elif backup_age_hours is not None and backup_age_hours > 36:
+    if backup_age_hours is not None and backup_age_hours > 36:
         reasons.append("El último backup tiene más de 36 horas")
 
     return ("WARN", reasons) if reasons else ("HEALTHY", [])
@@ -92,6 +109,8 @@ def collect_health(project_root: Path) -> dict[str, Any]:
         payload["reasons"] = errors
         payload["overall"] = "FAIL"
         return payload
+
+    mirror_required = _env_bool("SPORTLAND_BACKUP_REQUIRE_MIRROR", False)
 
     try:
         with connect(cfg) as conn:
@@ -125,7 +144,12 @@ def collect_health(project_root: Path) -> dict[str, Any]:
                     size_bytes,
                     sha256,
                     verified,
-                    retention_days
+                    retention_days,
+                    mirror_sha256,
+                    mirror_size_bytes,
+                    mirror_verified,
+                    mirror_required,
+                    mirror_retention_days
                 FROM ops_backups
                 ORDER BY created_at DESC
                 LIMIT 1
@@ -150,6 +174,9 @@ def collect_health(project_root: Path) -> dict[str, Any]:
 
     backup_verified = bool(backup.get("verified"))
     backup_age = _age_hours(backup.get("created_at"), now)
+    effective_mirror_required = mirror_required or bool(
+        backup.get("mirror_required")
+    )
 
     overall, reasons = classify_health(
         db_ok=bool(payload["database"].get("ok")),
@@ -158,9 +185,12 @@ def collect_health(project_root: Path) -> dict[str, Any]:
         memory_status=memory.get("status"),
         backup_verified=backup_verified,
         backup_age_hours=backup_age,
+        mirror_required=effective_mirror_required,
+        mirror_verified=backup.get("mirror_verified"),
     )
     payload["overall"] = overall
     payload["reasons"] = reasons
+    payload["mirror_required"] = effective_mirror_required
     payload["metrics"] = {
         "daily_age_hours": round(daily_age, 2) if daily_age is not None else None,
         "backup_age_hours": round(backup_age, 2) if backup_age is not None else None,
@@ -198,6 +228,11 @@ def render_html(payload: dict[str, Any]) -> str:
     def esc(value: Any) -> str:
         return html.escape(str(value if value is not None else "-"))
 
+    mirror_label = (
+        "OK" if backup.get("mirror_verified") is True
+        else ("REQUIRED" if payload.get("mirror_required") else "-")
+    )
+
     return f"""<!doctype html>
 <html lang="es">
 <head>
@@ -228,7 +263,8 @@ ul{{margin-bottom:0}}
   <div class="card"><small>Estado general</small><div class="value">{overall}</div></div>
   <div class="card"><small>Daily pipeline</small><div class="value">{esc(daily.get("status"))}</div><small>{esc(daily.get("current_step"))}</small></div>
   <div class="card"><small>Memory</small><div class="value">{esc(memory.get("status"))}</div><small>{esc(memory.get("run_id"))}</small></div>
-  <div class="card"><small>Último backup</small><div class="value">{'OK' if backup.get('verified') else '-'}</div><small>{_fmt_bytes(backup.get("size_bytes"))}</small></div>
+  <div class="card"><small>Backup local</small><div class="value">{'OK' if backup.get('verified') else '-'}</div><small>{_fmt_bytes(backup.get("size_bytes"))}</small></div>
+  <div class="card"><small>Mirror externo</small><div class="value">{mirror_label}</div><small>{_fmt_bytes(backup.get("mirror_size_bytes"))}</small></div>
 </div>
 
 <div class="grid" style="margin-top:16px">
@@ -247,8 +283,11 @@ ul{{margin-bottom:0}}
     <table>
       <tr><td>Database</td><td>{esc(backup.get("database_name"))}</td></tr>
       <tr><td>Creado</td><td>{esc(backup.get("created_at"))}</td></tr>
-      <tr><td>Verificado</td><td>{esc(backup.get("verified"))}</td></tr>
-      <tr><td>Retención</td><td>{esc(backup.get("retention_days"))} días</td></tr>
+      <tr><td>Local verificado</td><td>{esc(backup.get("verified"))}</td></tr>
+      <tr><td>Retención local</td><td>{esc(backup.get("retention_days"))} días</td></tr>
+      <tr><td>Mirror requerido</td><td>{esc(payload.get("mirror_required"))}</td></tr>
+      <tr><td>Mirror verificado</td><td>{esc(backup.get("mirror_verified"))}</td></tr>
+      <tr><td>Retención mirror</td><td>{esc(backup.get("mirror_retention_days"))} días</td></tr>
       <tr><td>Mirror</td><td>{esc(backup.get("mirror_path"))}</td></tr>
     </table>
   </div>

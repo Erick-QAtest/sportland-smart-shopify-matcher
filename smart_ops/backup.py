@@ -17,6 +17,7 @@ from smart_ops.status import load_status
 
 
 DEFAULT_RETENTION_DAYS = 14
+DEFAULT_MIRROR_RETENTION_DAYS = 30
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,18 @@ class BackupResult:
     sha256: str
     verified: bool
     deleted_old_backups: int
+    mirror_size_bytes: int | None = None
+    mirror_sha256: str | None = None
+    mirror_verified: bool | None = None
+    deleted_old_mirror_backups: int = 0
+    mirror_required: bool = False
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def database_name_from_url(database_url: str) -> str:
@@ -80,6 +93,9 @@ def prune_old_backups(
     cutoff = current - timedelta(days=retention_days)
     deleted = 0
 
+    if not backup_dir.exists():
+        return 0
+
     for path in backup_dir.glob("*.dump"):
         modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
         if modified < cutoff:
@@ -87,6 +103,64 @@ def prune_old_backups(
             deleted += 1
 
     return deleted
+
+
+def validate_mirror_location(project_root: Path, mirror_dir: Path) -> Path:
+    project = project_root.expanduser().resolve()
+    mirror = mirror_dir.expanduser().resolve()
+
+    if mirror == project or project in mirror.parents:
+        raise ValueError(
+            "El mirror debe estar fuera del proyecto local. "
+            "Usa iCloud Drive, Google Drive, Dropbox, OneDrive o un volumen externo."
+        )
+
+    return mirror
+
+
+def copy_and_verify_mirror(
+    source: Path,
+    mirror_dir: Path,
+    *,
+    expected_sha256: str,
+    expected_size_bytes: int,
+) -> tuple[Path, int, str, bool]:
+    mirror_dir.mkdir(parents=True, exist_ok=True)
+    destination = mirror_dir / source.name
+    partial = mirror_dir / f".{source.name}.partial"
+
+    if partial.exists():
+        partial.unlink()
+
+    try:
+        shutil.copy2(source, partial)
+        copied_size = partial.stat().st_size
+        copied_sha = sha256_file(partial)
+
+        if copied_size != expected_size_bytes or copied_sha != expected_sha256:
+            raise RuntimeError(
+                "La copia externa no coincide con el backup local "
+                f"(size {copied_size}/{expected_size_bytes}, "
+                f"sha256 {copied_sha}/{expected_sha256})."
+            )
+
+        partial.replace(destination)
+        final_size = destination.stat().st_size
+        final_sha = sha256_file(destination)
+        verified = (
+            final_size == expected_size_bytes
+            and final_sha == expected_sha256
+        )
+        if not verified:
+            raise RuntimeError(
+                "El mirror externo cambió después de la copia; "
+                "no se puede marcar como verificado."
+            )
+
+        return destination, final_size, final_sha, True
+    finally:
+        if partial.exists():
+            partial.unlink()
 
 
 def create_backup(
@@ -105,6 +179,17 @@ def create_backup(
     )
     if days < 1:
         raise ValueError("SPORTLAND_BACKUP_RETENTION_DAYS debe ser >= 1")
+
+    mirror_days = int(
+        os.getenv(
+            "SPORTLAND_BACKUP_MIRROR_RETENTION_DAYS",
+            str(DEFAULT_MIRROR_RETENTION_DAYS),
+        )
+    )
+    if mirror_days < 1:
+        raise ValueError("SPORTLAND_BACKUP_MIRROR_RETENTION_DAYS debe ser >= 1")
+
+    mirror_required = _env_bool("SPORTLAND_BACKUP_REQUIRE_MIRROR", False)
 
     db_name = database_name_from_url(cfg.database_url)
     backup_dir = project_root / "backups" / "postgres"
@@ -154,11 +239,36 @@ def create_backup(
         if raw:
             resolved_mirror = Path(raw).expanduser()
 
+    if mirror_required and resolved_mirror is None:
+        raise RuntimeError(
+            "SPORTLAND_BACKUP_REQUIRE_MIRROR=true pero "
+            "SPORTLAND_BACKUP_MIRROR_DIR no está configurado."
+        )
+
     mirrored: Path | None = None
+    mirror_size: int | None = None
+    mirror_digest: str | None = None
+    mirror_verified: bool | None = None
+    deleted_mirror = 0
+
     if resolved_mirror is not None:
-        resolved_mirror.mkdir(parents=True, exist_ok=True)
-        mirrored = resolved_mirror / path.name
-        shutil.copy2(path, mirrored)
+        resolved_mirror = validate_mirror_location(project_root, resolved_mirror)
+        mirrored, mirror_size, mirror_digest, mirror_verified = copy_and_verify_mirror(
+            path,
+            resolved_mirror,
+            expected_sha256=digest,
+            expected_size_bytes=size_bytes,
+        )
+        deleted_mirror = prune_old_backups(
+            resolved_mirror,
+            retention_days=mirror_days,
+            now=now,
+        )
+
+    if mirror_required and mirror_verified is not True:
+        raise RuntimeError(
+            "El mirror externo es obligatorio y no pudo verificarse."
+        )
 
     deleted = prune_old_backups(
         backup_dir,
@@ -183,9 +293,18 @@ def create_backup(
                     sha256,
                     verified,
                     retention_days,
+                    mirror_sha256,
+                    mirror_size_bytes,
+                    mirror_verified,
+                    mirror_required,
+                    mirror_retention_days,
                     metadata
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s)
+                VALUES (
+                    %s, %s, %s, %s, %s,
+                    %s, %s, TRUE, %s,
+                    %s, %s, %s, %s, %s, %s
+                )
                 """,
                 (
                     now,
@@ -196,9 +315,15 @@ def create_backup(
                     size_bytes,
                     digest,
                     days,
+                    mirror_digest,
+                    mirror_size,
+                    mirror_verified,
+                    mirror_required,
+                    mirror_days,
                     Jsonb({
                         "format": "pg_dump_custom",
                         "deleted_old_backups": deleted,
+                        "deleted_old_mirror_backups": deleted_mirror,
                     }),
                 ),
             )
@@ -215,4 +340,9 @@ def create_backup(
         sha256=digest,
         verified=True,
         deleted_old_backups=deleted,
+        mirror_size_bytes=mirror_size,
+        mirror_sha256=mirror_digest,
+        mirror_verified=mirror_verified,
+        deleted_old_mirror_backups=deleted_mirror,
+        mirror_required=mirror_required,
     )

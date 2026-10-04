@@ -28,10 +28,27 @@ def main() -> int:
     print(f"SHA256: {result.sha256}")
     print(f"Verified: {'YES' if result.verified else 'NO'}")
     print(f"Old backups deleted: {result.deleted_old_backups}")
+
     if result.mirror_path:
         print(f"Mirror: {result.mirror_path}")
+        print(f"Mirror size bytes: {result.mirror_size_bytes}")
+        print(f"Mirror SHA256: {result.mirror_sha256}")
+        print(
+            "Mirror verified: "
+            f"{'YES' if result.mirror_verified is True else 'NO'}"
+        )
+        print(
+            "Old mirror backups deleted: "
+            f"{result.deleted_old_mirror_backups}"
+        )
     else:
         print("Mirror: not configured")
+
+    if result.mirror_required:
+        print("Mirror policy: REQUIRED")
+    else:
+        print("Mirror policy: OPTIONAL")
+
     return 0
 
 
