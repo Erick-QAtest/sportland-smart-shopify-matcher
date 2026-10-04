@@ -1,0 +1,14 @@
+{
+  "moderate_demand_score": 1.0,
+  "strong_demand_score": 3.0,
+  "strong_product_demand_score": 4.0,
+  "product_liquidation_slow_variant_share": 0.65,
+  "min_product_stock_units_for_liquidation": 2,
+  "min_events_for_product_liquidation_confidence": 20,
+  "min_markup_over_cost_pct": 0.10,
+  "max_discount_pct": 0.30,
+  "discount_score_70": 0.15,
+  "discount_score_75": 0.20,
+  "discount_score_82": 0.25,
+  "discount_score_90": 0.30
+}

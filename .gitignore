@@ -8,3 +8,36 @@ creds.json
 *service-account*.json
 *.pem
 eventos_log.csv
+
+# Local secrets / backups
+.env
+.env.*
+!.env.example
+*.backup.*
+.env.backup.*
+
+# Generated sprint packages
+Sportland_Smart_*_Sprint_*/
+Sportland_Smart_*_Sprint_*.zip
+Sportland_Smart_Finance_v0_1/
+Sportland_Smart_Finance_v0_1.zip
+Sportland_Smart_Finance_v2_Adapter/
+Sportland_Smart_Finance_v2_Adapter.zip
+Sportland_Smart_Finance_v2_Full_Hotfix/
+Sportland_Smart_Finance_v2_Full_Hotfix.zip
+
+# Local code backups
+smart_finance.backup.*/
+run_finance.py.backup.*
+
+# Runtime
+artifacts/
+logs/
+
+# Python/macOS
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+*.backup

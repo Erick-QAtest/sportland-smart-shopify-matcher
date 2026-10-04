@@ -1,0 +1,15 @@
+{
+  "weight_0_7d": 1.0,
+  "weight_8_30d": 0.7,
+  "weight_31_60d": 0.4,
+  "weight_older": 0.2,
+  "weight_unknown_date": 0.5,
+  "behavior_moderate": 1.0,
+  "behavior_strong": 3.0,
+  "demand_moderate": 1.0,
+  "demand_strong": 3.0,
+  "conversion_moderate": 1.0,
+  "conversion_strong": 4.0,
+  "medium_confidence_events": 20,
+  "high_confidence_events": 100
+}

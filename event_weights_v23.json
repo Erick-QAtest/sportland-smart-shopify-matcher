@@ -1,0 +1,22 @@
+{
+  "ENTRADA_WHATSAPP": {"behavior": 0.50, "demand": 0.20, "conversion": 0.00},
+  "REACCION_CONTENIDO": {"behavior": 0.25, "demand": 0.10, "conversion": 0.00},
+  "CLICK": {"behavior": 0.25, "demand": 0.10, "conversion": 0.00},
+  "DM_ACTIVO": {"behavior": 0.75, "demand": 0.75, "conversion": 0.10},
+  "PREGUNTA_TALLA_PRECIO": {"behavior": 1.00, "demand": 1.25, "conversion": 0.20},
+  "PREGUNTA_SISTEMA_APARTADO": {"behavior": 0.80, "demand": 0.80, "conversion": 0.35},
+  "PREGUNTA_MODELO_ESPECIFICO": {"behavior": 0.90, "demand": 1.00, "conversion": 0.15},
+  "PRUEBA_MULTIPLES_MODELOS": {"behavior": 1.10, "demand": 1.50, "conversion": 0.30},
+  "APARTADO": {"behavior": 1.50, "demand": 2.00, "conversion": 1.50},
+  "ABONO_APARTADO": {"behavior": 1.50, "demand": 2.50, "conversion": 2.50},
+  "LIQUIDACION_APARTADO": {"behavior": 1.50, "demand": 2.50, "conversion": 3.50},
+  "COMPRA": {"behavior": 1.50, "demand": 2.50, "conversion": 4.00},
+  "COMPRA_TIENDA_FISICA": {"behavior": 1.50, "demand": 2.50, "conversion": 4.00},
+  "COMPRA_ECOMMERCE": {"behavior": 1.50, "demand": 2.50, "conversion": 4.00},
+  "COMPRA_MARKETPLACE": {"behavior": 1.50, "demand": 2.50, "conversion": 4.00},
+  "SALE_SIN_COMPRA": {"behavior": 0.25, "demand": 0.50, "conversion": -0.75},
+  "EVENTO_NEGATIVO": {"behavior": -0.50, "demand": -0.40, "conversion": -0.50},
+  "SILENCIO_PROLONGADO": {"behavior": -0.20, "demand": -0.15, "conversion": -0.30},
+  "REVIEW_POSITIVA": {"behavior": 0.25, "demand": 0.05, "conversion": 0.25},
+  "REVIEW_NEGATIVA": {"behavior": -0.30, "demand": 0.00, "conversion": -0.25}
+}
