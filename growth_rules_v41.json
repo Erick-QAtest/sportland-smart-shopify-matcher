@@ -1,0 +1,27 @@
+{
+  "high_threshold": 65,
+  "medium_threshold": 55,
+  "minimum_impressions_for_performance": 250,
+  "minimum_orders_for_performance": 2,
+  "performance_bonus_cap": 12,
+  "performance_penalty_cap": 12,
+  "objective_base_scores": {
+    "CONVERSION_CAMPAIGN_REVIEW": 58,
+    "ONE_TO_ONE_CONTACT_REVIEW": 62,
+    "CLEARANCE_CAMPAIGN_REVIEW": 50,
+    "COMMUNITY_PROMOTION_REVIEW": 52,
+    "COMMUNITY_CLEARANCE_REVIEW": 46,
+    "ORGANIC_DEMAND_CAPTURE": 48,
+    "CONTENT_SUPPORT": 40,
+    "SEARCH_DEMAND_REVIEW": 38,
+    "OUT_OF_STOCK_DEMAND_CAPTURE": 18,
+    "AGGREGATE_AUDIENCE_SIGNAL": 22
+  },
+  "max_band_by_objective": {
+    "CONTENT_SUPPORT": "MEDIUM",
+    "SEARCH_DEMAND_REVIEW": "MEDIUM",
+    "COMMUNITY_CLEARANCE_REVIEW": "MEDIUM",
+    "OUT_OF_STOCK_DEMAND_CAPTURE": "SIGNAL",
+    "AGGREGATE_AUDIENCE_SIGNAL": "SIGNAL"
+  }
+}
