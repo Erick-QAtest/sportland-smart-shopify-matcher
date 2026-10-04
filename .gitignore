@@ -42,3 +42,6 @@ __pycache__/
 .DS_Store
 *.backup
 finance_rules.json
+
+# Local verified PostgreSQL backups
+backups/
