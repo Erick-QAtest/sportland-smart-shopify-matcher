@@ -35,6 +35,7 @@ def main() -> int:
                 di.requested_size
             FROM commercial_opportunities co
             JOIN demand_intents di ON di.intent_id = co.intent_id
+            WHERE co.lifecycle_status = 'OPEN'
             ORDER BY
                 CASE co.priority_band
                     WHEN 'HIGH' THEN 1

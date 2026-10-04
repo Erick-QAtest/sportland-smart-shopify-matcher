@@ -289,6 +289,7 @@ def score_commercial_opportunities(
         FROM commercial_opportunities co
         JOIN demand_intents di ON di.intent_id = co.intent_id
         LEFT JOIN customer_events ce ON ce.event_id = di.source_event_id
+        WHERE co.lifecycle_status = 'OPEN'
         ORDER BY co.opportunity_id
         """
     ).fetchall()
