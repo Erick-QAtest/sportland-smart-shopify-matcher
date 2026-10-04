@@ -1,5 +1,5 @@
 #!/bin/zsh
-set -e
+set -euo pipefail
 
 PROJECT="/Users/noecortes/Downloads/Sportland_Smart_x_Shopify_V1_1_AUTH_READY"
 LOG_DIR="$PROJECT/logs"
@@ -13,8 +13,8 @@ echo "========================================"
 echo "SPORTLAND DAILY START: $(date)"
 echo "========================================"
 
-echo "1/4 Smart × Shopify matcher"
-python run_match.py
+echo "1/4 Memory Orchestrator"
+python run_memory_daily.py
 
 echo "2/4 Finanzas"
 python run_finance.py
