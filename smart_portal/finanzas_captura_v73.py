@@ -289,6 +289,7 @@ def render_finanzas_captura(
     form: dict[str, list[str]] | None = None,
     saved: dict[str, int] | None = None,
     horizon_days: int = 30,
+    extra_html: str = "",
 ) -> str:
     today = _today()
     debts_by_creditor, cash, obligations = load_v2_inputs(conn, as_of=today, horizon_days=horizon_days)
@@ -396,5 +397,6 @@ def render_finanzas_captura(
                 ['Fecha', 'Concepto', 'Acreedor', 'Monto', 'Estado', 'Cuenta / referencia', 'Categoría'], pago_rows, len(pago_rows))}
     {form_block('deudas', 'Deudas', 'Saldo vigente por acreedor. Márcala Liquidada cuando ya no se deba nada.',
                 ['Acreedor', 'Saldo actual', 'Estado'], deuda_rows, len(deuda_rows))}
+    {extra_html}
     """
     return base_page("Captura de finanzas", content)

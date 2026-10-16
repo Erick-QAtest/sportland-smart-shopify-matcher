@@ -36,6 +36,7 @@ from smart_portal.auth_v70 import (
     verify_password,
     verify_session,
 )
+from smart_portal.cierre_v74 import render_cierre_panel, request_run
 from smart_portal.finanzas_captura_v73 import (
     SAVERS as FINANZAS_SAVERS,
     render_finanzas_captura,
@@ -208,7 +209,10 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
                         return int(raw) if raw.isdigit() else 0
                     saved = {"nuevos": _count("nuevos"), "cambios": _count("cambios")} if query.get("guardado") else None
                     with connect(cfg) as conn:
-                        self.send_html(render_finanzas_captura(conn, csrf_token=self._csrf_token(), saved=saved))
+                        self.send_html(render_finanzas_captura(
+                            conn, csrf_token=self._csrf_token(), saved=saved,
+                            extra_html=self._cierre_panel("/finanzas/captura", query),
+                        ))
                     return
 
                 if route == "/registro":
@@ -221,6 +225,7 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
                                 saved=int(saved) if saved and saved.isdigit() else None,
                                 duplicates=int((query.get("duplicados") or ["0"])[0] or 0),
                                 new_customers=int((query.get("nuevos") or ["0"])[0] or 0),
+                                extra_html=self._cierre_panel("/registro", query),
                             )
                         )
                     return
@@ -385,7 +390,7 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
                 return
 
             finanzas_section = route.removeprefix("/finanzas/captura/") if route.startswith("/finanzas/captura/") else None
-            if route not in {"/impacto/estado", "/impacto/resultado", "/registro"} and finanzas_section not in FINANZAS_SAVERS:
+            if route not in {"/impacto/estado", "/impacto/resultado", "/registro", "/cerrar-dia"} and finanzas_section not in FINANZAS_SAVERS:
                 self.send_html(
                     "<!doctype html><html><body><h1>405</h1><p>Método no permitido.</p></body></html>",
                     status=405,
@@ -406,6 +411,16 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
 
             if finanzas_section in FINANZAS_SAVERS:
                 self._handle_finanzas(finanzas_section, form)
+                return
+
+            if route == "/cerrar-dia":
+                volver = (form.get("volver") or ["/registro"])[0]
+                if volver not in {"/registro", "/finanzas/captura"}:
+                    volver = "/registro"
+                actor = auth_cfg.username if auth_cfg.enabled and auth_cfg.username else "portal"
+                resultado = request_run(project_root, actor=actor)
+                print(f"[portal] cerrar el día: {resultado} ({actor})")
+                self.redirect(f"{volver}?cierre={resultado}#cerrar-dia")
                 return
 
             try:
@@ -473,6 +488,14 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
                     "<!doctype html><html><body style='font-family:system-ui;padding:30px'><h1>Sportland Smart</h1><p>No se pudo guardar el registro. No se guardó ningún evento.</p><p>Revisa la terminal del portal para ver el error.</p><p><a href='/registro'>Volver al Registro del día</a></p></body></html>",
                     status=500,
                 )
+
+        def _cierre_panel(self, return_to: str, query: dict[str, list[str]]) -> str:
+            return render_cierre_panel(
+                project_root,
+                csrf_token=self._csrf_token(),
+                return_to=return_to,
+                message_key=(query.get("cierre") or [None])[0],
+            )
 
         def _handle_finanzas(self, section: str, form: dict[str, list[str]]) -> None:
             actor = auth_cfg.username if auth_cfg.enabled and auth_cfg.username else "portal"

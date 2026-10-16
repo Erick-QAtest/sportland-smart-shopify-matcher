@@ -365,6 +365,7 @@ def render_registro(
     duplicates: int = 0,
     new_customers: int = 0,
     today: date | None = None,
+    extra_html: str = "",
 ) -> str:
     today = today or datetime.now(TZ).date()
     catalog = fetch_catalog(conn)
@@ -442,6 +443,7 @@ def render_registro(
         <span style="color:#667085">Las filas vacías se ignoran. Si alguna fila tiene un error no se guarda ninguna, para que corrijas sin perder lo escrito.</span>
       </div>
     </form>
+    {extra_html}
 
     <div class="section-title" style="margin-top:24px"><h2>Registrado hoy</h2><span>Desde el portal</span></div>
     <div class="reg-wrap">

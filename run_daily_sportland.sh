@@ -7,6 +7,15 @@ LOG_DIR="$PROJECT/logs"
 mkdir -p "$LOG_DIR"
 cd "$PROJECT"
 
+# Una sola corrida a la vez (timer de las 7:00 y botón "Cerrar el día" del portal).
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$LOG_DIR/daily.lock"
+  if ! flock -n 9; then
+    echo "SPORTLAND DAILY SKIPPED: ya hay una corrida en curso ($(date))"
+    exit 0
+  fi
+fi
+
 source "$PROJECT/.venv/bin/activate"
 
 python run_ops_status.py start || true

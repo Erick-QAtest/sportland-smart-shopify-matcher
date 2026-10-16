@@ -1,0 +1,10 @@
+[Unit]
+Description=Arranca el pipeline diario cuando el portal pide "Cerrar el día"
+
+[Path]
+# El portal reemplaza este archivo al pulsar el botón; el servicio es el mismo del timer.
+PathModified=/opt/sportland-smart/logs/ops/run_request
+Unit=sportland-daily.service
+
+[Install]
+WantedBy=multi-user.target
