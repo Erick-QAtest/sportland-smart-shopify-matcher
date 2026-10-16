@@ -136,6 +136,9 @@ def main() -> int:
         manual_debts=manual_debts,
     )
     snapshot["finance_schema"] = cfg.schema
+    if cfg.source == "db":
+        # compute_snapshot etiqueta estas fuentes como hoja; aquí vienen de la captura del portal.
+        snapshot.setdefault("data_sources", {}).update(cash="portal_db", debt="portal_db", obligations="portal_db")
     health = compute_health_score(snapshot)
     snapshot["financial_health"] = health
 
