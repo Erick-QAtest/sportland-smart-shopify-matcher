@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -uo pipefail
 
-PROJECT="/Users/noecortes/Downloads/Sportland_Smart_x_Shopify_V1_1_AUTH_READY"
+PROJECT="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$PROJECT/logs"
 
 mkdir -p "$LOG_DIR"

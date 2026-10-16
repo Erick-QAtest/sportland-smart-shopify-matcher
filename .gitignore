@@ -45,3 +45,6 @@ finance_rules.json
 
 # Local verified PostgreSQL backups
 backups/
+
+# Datos de importación (Amazon, etc.)
+imports/

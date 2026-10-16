@@ -1,0 +1,28 @@
+[Unit]
+Description=Sportland Smart Portal Administrativo
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=sportland
+Group=sportland
+WorkingDirectory=/opt/sportland-smart
+EnvironmentFile=/opt/sportland-smart/.env
+EnvironmentFile=-/opt/sportland-smart/.env.portal
+ExecStart=/opt/sportland-smart/.venv/bin/python /opt/sportland-smart/run_sportland_portal.py --host 127.0.0.1 --port 8700 --no-open
+Restart=on-failure
+RestartSec=4
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

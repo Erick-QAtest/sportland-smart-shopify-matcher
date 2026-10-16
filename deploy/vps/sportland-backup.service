@@ -1,0 +1,6 @@
+[Unit]
+Description=Copia de seguridad PostgreSQL de Sportland Smart
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/sportland-smart-backup

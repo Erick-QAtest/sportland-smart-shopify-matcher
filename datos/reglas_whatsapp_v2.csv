@@ -1,0 +1,6 @@
+﻿Tipo de mensaje,Cuándo,Frecuencia,Objetivo,Estructura,CTA,Prioridad,Regla
+Nuevos productos,En cuanto haya ingreso real de inventario,1–2/semana,Conversión / recompra,Foto + nombre + precio + tallas + beneficio breve + link,Ver nuevos productos,MUY ALTA,Es el contenido principal porque es el que más convierte
+Restock / nuevas tallas,Cuando vuelva una talla/modelo demandado,0–1/semana,Conversión,Qué volvió + tallas + link directo,Ver disponibilidad,ALTA,Enviar solo si la novedad es real
+Oferta real,Cuando exista una promoción concreta,0–1/semana,Conversión,Producto + precio anterior/actual + tallas + link,Comprar,ALTA,No crear falsa urgencia
+Contenido útil,Solo si aporta valor a compradores,1–2/mes,Retención,Tip breve + link a guía,Ver guía,MEDIA,No desplazar nuevos productos
+Review / prueba social,Cuando haya reseña fuerte y relevante,1–2/mes,Confianza,Reseña breve + producto + link,Ver producto,MEDIA,No abusar
