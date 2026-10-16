@@ -115,6 +115,7 @@ def base_page(title: str, content: str, *, health: str = "") -> str:
   </div>
   <div class="topnav">
     <a href="/">Hoy</a>
+    <a href="/registro">Registro del día</a>
     <a href="/recomendaciones">Recomendaciones</a>
     <a href="/impacto">Impacto</a>
     <a href="/customer-intelligence">Clientes</a>

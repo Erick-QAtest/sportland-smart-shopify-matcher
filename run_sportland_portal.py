@@ -36,6 +36,11 @@ from smart_portal.auth_v70 import (
     verify_password,
     verify_session,
 )
+from smart_portal.registro_v72 import (
+    guardar_registro,
+    parse_rows,
+    render_registro,
+)
 from smart_portal.impacto_v71 import (
     make_csrf,
     registrar_estado,
@@ -193,6 +198,20 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
                         self.send_html(render_impacto(conn))
                     return
 
+                if route == "/registro":
+                    saved = (query.get("guardados") or [None])[0]
+                    with connect(cfg) as conn:
+                        self.send_html(
+                            render_registro(
+                                conn,
+                                csrf_token=self._csrf_token(),
+                                saved=int(saved) if saved and saved.isdigit() else None,
+                                duplicates=int((query.get("duplicados") or ["0"])[0] or 0),
+                                new_customers=int((query.get("nuevos") or ["0"])[0] or 0),
+                            )
+                        )
+                    return
+
                 if route == "/impacto/recomendacion":
                     raw_id = (query.get("id") or ["0"])[0]
                     try:
@@ -299,10 +318,11 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
             parsed = urlparse(self.path)
             route = parsed.path.rstrip("/") or "/"
 
+            body_limit = 131072 if route == "/registro" else 16384
             try:
                 length = min(
                     int(self.headers.get("Content-Length", "0") or 0),
-                    16384,
+                    body_limit,
                 )
             except ValueError:
                 length = 0
@@ -351,7 +371,7 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
             if not self._require_auth(route):
                 return
 
-            if route not in {"/impacto/estado", "/impacto/resultado"}:
+            if route not in {"/impacto/estado", "/impacto/resultado", "/registro"}:
                 self.send_html(
                     "<!doctype html><html><body><h1>405</h1><p>Método no permitido.</p></body></html>",
                     status=405,
@@ -364,6 +384,10 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
                     "<!doctype html><html><body><h1>403</h1><p>Solicitud no válida.</p><p><a href='/impacto'>Volver a Impacto</a></p></body></html>",
                     status=403,
                 )
+                return
+
+            if route == "/registro":
+                self._handle_registro(form)
                 return
 
             try:
@@ -401,6 +425,35 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
                 self.send_html(
                     "<!doctype html><html><body style='font-family:system-ui;padding:30px'><h1>Sportland Smart</h1><p>No se pudo guardar el seguimiento.</p><p>Revisa la terminal del portal para ver el error.</p><p><a href='/impacto'>Volver a Impacto</a></p></body></html>",
                     status=400,
+                )
+
+        def _handle_registro(self, form: dict[str, list[str]]) -> None:
+            rows = parse_rows(form)
+            actor = auth_cfg.username if auth_cfg.enabled and auth_cfg.username else "portal"
+            try:
+                with connect(cfg) as conn:
+                    summary = guardar_registro(conn, rows, actor=actor)
+                    if not any(result.errors for result in summary["results"]):
+                        # Post/Redirect/Get: recargar la página no vuelve a enviar el lote.
+                        self.redirect(
+                            f"/registro?guardados={summary['saved']}"
+                            f"&duplicados={summary['duplicates']}&nuevos={summary['new_customers']}"
+                        )
+                        return
+                    self.send_html(
+                        render_registro(
+                            conn,
+                            csrf_token=self._csrf_token(),
+                            results=summary["results"],
+                            rows=rows,
+                        ),
+                        status=400,
+                    )
+            except Exception as exc:
+                print(f"[portal] registro failed: {type(exc).__name__}: {exc}")
+                self.send_html(
+                    "<!doctype html><html><body style='font-family:system-ui;padding:30px'><h1>Sportland Smart</h1><p>No se pudo guardar el registro. No se guardó ningún evento.</p><p>Revisa la terminal del portal para ver el error.</p><p><a href='/registro'>Volver al Registro del día</a></p></body></html>",
+                    status=500,
                 )
 
         def log_message(self, fmt: str, *args) -> None:
