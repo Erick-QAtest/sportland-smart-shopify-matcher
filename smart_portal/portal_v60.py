@@ -123,6 +123,7 @@ def base_page(title: str, content: str, *, health: str = "") -> str:
     <a href="/marketing">Marketing</a>
     <a href="/whatsapp-borradores">WhatsApp</a>
     <a href="/finance">Finanzas</a>
+    <a href="/finanzas/captura">Captura de finanzas</a>
     <a href="/demand">Demanda</a>
     <a href="/memory">Memoria</a>
     <a href="/growth">Crecimiento</a>

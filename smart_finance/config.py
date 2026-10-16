@@ -70,6 +70,9 @@ class FinanceConfig:
                 errors.append("GOOGLE_SERVICE_ACCOUNT_FILE/FINANCE_GOOGLE_SERVICE_ACCOUNT_FILE is required")
             elif not Path(self.service_account_file).exists():
                 errors.append(f"Service Account file not found: {self.service_account_file}")
+        elif self.source == "db":
+            if self.schema != "v2":
+                errors.append("FINANCE_SOURCE=db requires FINANCE_SCHEMA=v2")
         elif self.source != "fixture":
-            errors.append("FINANCE_SOURCE must be 'sheets' or 'fixture'")
+            errors.append("FINANCE_SOURCE must be 'sheets', 'db' or 'fixture'")
         return errors

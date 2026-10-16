@@ -59,10 +59,22 @@ def main() -> int:
                 print(f"- {e}")
             return 2
 
-        print(f"1/5 Reading external finance data — schema={cfg.schema}...")
-        reader = GoogleSheetsReader(cfg.spreadsheet_id, cfg.service_account_file)
+        print(f"1/5 Reading external finance data — schema={cfg.schema} source={cfg.source}...")
 
-        if cfg.schema == "v2":
+        if cfg.source == "db":
+            # Capturado en el portal; mismos parsers v2 que la hoja.
+            from smart_finance.db_source import load_v2_inputs
+            from smart_memory.config import MemoryConfig
+            from smart_memory.db import connect
+
+            with connect(MemoryConfig.from_env()) as conn:
+                provider_balances, cash, obligations = load_v2_inputs(
+                    conn, as_of=date.today(), horizon_days=cfg.horizon_days
+                )
+            manual_debts = []
+            cost_fallback = {}
+        elif cfg.schema == "v2":
+            reader = GoogleSheetsReader(cfg.spreadsheet_id, cfg.service_account_file)
             debts_rows = reader.read(f"'{cfg.debts_sheet}'!A:J")
             payments_rows = reader.read(f"'{cfg.payments_sheet}'!A:K")
             cash_rows = reader.read(f"'{cfg.cashflow_sheet}'!A:H")
@@ -77,6 +89,7 @@ def main() -> int:
             manual_debts = []
             cost_fallback = {}
         else:
+            reader = GoogleSheetsReader(cfg.spreadsheet_id, cfg.service_account_file)
             providers_rows = reader.read(f"'{cfg.providers_sheet}'!A:AZ")
             payments_rows = reader.read(f"'{cfg.payments_sheet}'!A:AZ")
             cash_rows = reader.read(f"'{cfg.cashflow_sheet}'!A:AZ")

@@ -36,6 +36,10 @@ from smart_portal.auth_v70 import (
     verify_password,
     verify_session,
 )
+from smart_portal.finanzas_captura_v73 import (
+    SAVERS as FINANZAS_SAVERS,
+    render_finanzas_captura,
+)
 from smart_portal.registro_v72 import (
     guardar_registro,
     parse_rows,
@@ -198,6 +202,15 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
                         self.send_html(render_impacto(conn))
                     return
 
+                if route == "/finanzas/captura":
+                    def _count(name: str) -> int:
+                        raw = (query.get(name) or ["0"])[0]
+                        return int(raw) if raw.isdigit() else 0
+                    saved = {"nuevos": _count("nuevos"), "cambios": _count("cambios")} if query.get("guardado") else None
+                    with connect(cfg) as conn:
+                        self.send_html(render_finanzas_captura(conn, csrf_token=self._csrf_token(), saved=saved))
+                    return
+
                 if route == "/registro":
                     saved = (query.get("guardados") or [None])[0]
                     with connect(cfg) as conn:
@@ -318,7 +331,7 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
             parsed = urlparse(self.path)
             route = parsed.path.rstrip("/") or "/"
 
-            body_limit = 131072 if route == "/registro" else 16384
+            body_limit = 262144 if route == "/registro" or route.startswith("/finanzas/captura/") else 16384
             try:
                 length = min(
                     int(self.headers.get("Content-Length", "0") or 0),
@@ -371,7 +384,8 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
             if not self._require_auth(route):
                 return
 
-            if route not in {"/impacto/estado", "/impacto/resultado", "/registro"}:
+            finanzas_section = route.removeprefix("/finanzas/captura/") if route.startswith("/finanzas/captura/") else None
+            if route not in {"/impacto/estado", "/impacto/resultado", "/registro"} and finanzas_section not in FINANZAS_SAVERS:
                 self.send_html(
                     "<!doctype html><html><body><h1>405</h1><p>Método no permitido.</p></body></html>",
                     status=405,
@@ -388,6 +402,10 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
 
             if route == "/registro":
                 self._handle_registro(form)
+                return
+
+            if finanzas_section in FINANZAS_SAVERS:
+                self._handle_finanzas(finanzas_section, form)
                 return
 
             try:
@@ -453,6 +471,27 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
                 print(f"[portal] registro failed: {type(exc).__name__}: {exc}")
                 self.send_html(
                     "<!doctype html><html><body style='font-family:system-ui;padding:30px'><h1>Sportland Smart</h1><p>No se pudo guardar el registro. No se guardó ningún evento.</p><p>Revisa la terminal del portal para ver el error.</p><p><a href='/registro'>Volver al Registro del día</a></p></body></html>",
+                    status=500,
+                )
+
+        def _handle_finanzas(self, section: str, form: dict[str, list[str]]) -> None:
+            actor = auth_cfg.username if auth_cfg.enabled and auth_cfg.username else "portal"
+            try:
+                with connect(cfg) as conn:
+                    result = FINANZAS_SAVERS[section](conn, form, actor=actor)
+                    if result.ok:
+                        self.redirect(
+                            f"/finanzas/captura?guardado={section}&nuevos={result.inserted}&cambios={result.updated}#{section}"
+                        )
+                        return
+                    self.send_html(
+                        render_finanzas_captura(conn, csrf_token=self._csrf_token(), section=section, result=result, form=form),
+                        status=400,
+                    )
+            except Exception as exc:
+                print(f"[portal] finanzas {section} failed: {type(exc).__name__}: {exc}")
+                self.send_html(
+                    "<!doctype html><html><body style='font-family:system-ui;padding:30px'><h1>Sportland Smart</h1><p>No se pudo guardar. No se cambió nada.</p><p><a href='/finanzas/captura'>Volver a Captura de finanzas</a></p></body></html>",
                     status=500,
                 )
 
