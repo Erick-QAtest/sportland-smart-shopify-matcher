@@ -1,0 +1,17 @@
+[Unit]
+Description=Pipeline diario de Sportland Smart (memoria, finanzas, decisiones, growth, respaldo)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=sportland
+Group=sportland
+WorkingDirectory=/opt/sportland-smart
+ExecStart=/bin/bash /opt/sportland-smart/run_daily_sportland.sh
+StandardOutput=append:/opt/sportland-smart/logs/daily.log
+StandardError=append:/opt/sportland-smart/logs/daily.log
+TimeoutStartSec=3h
+Nice=5
+NoNewPrivileges=true
+PrivateTmp=true
