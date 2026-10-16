@@ -1,13 +1,21 @@
 #!/usr/bin/env bash
 # Pide el secreto de Shopify (oculto), lo prueba contra Shopify y solo si funciona lo guarda
 # en /opt/sportland-smart/.env. Opcionalmente relanza el pipeline diario.
-# Uso: sudo bash ~/sportland-src/deploy/vps/ACTUALIZAR_SECRETO_SHOPIFY.sh
+# Uso: sudo bash ~/sportland-src/deploy/vps/ACTUALIZAR_SECRETO_SHOPIFY.sh [--relanzar]
+# Si existe /home/lexradar/.shopify_secret (copiado desde la Mac) lo usa y lo borra; si no, lo pide.
 set -euo pipefail
 APP=/opt/sportland-smart
 [ "$(id -u)" -eq 0 ] || { echo "Ejecuta con sudo."; exit 1; }
 
-read -rsp "SHOPIFY_CLIENT_SECRET (no se verá al escribir): " SECRET; echo
-SECRET=$(printf '%s' "$SECRET" | tr -d '[:space:]')
+SECRET_FILE=/home/lexradar/.shopify_secret
+if [ -f "$SECRET_FILE" ]; then
+  SECRET=$(tr -d '[:space:]"'"'"'' < "$SECRET_FILE")
+  shred -u "$SECRET_FILE" 2>/dev/null || rm -f "$SECRET_FILE"
+  echo "Secreto tomado del archivo copiado desde la Mac (archivo borrado)."
+else
+  read -rsp "SHOPIFY_CLIENT_SECRET (no se verá al escribir): " SECRET; echo
+  SECRET=$(printf '%s' "$SECRET" | tr -d '[:space:]')
+fi
 [ -n "$SECRET" ] || { echo "Vacío; no se cambió nada."; exit 1; }
 
 echo "==> Probando contra Shopify (sin guardar todavía)"
@@ -40,7 +48,8 @@ open(path, "w").write(text)
 unset SECRET
 chown sportland:sportland "$APP/.env" && chmod 600 "$APP/.env"
 
-read -rp "¿Relanzar ahora la corrida de prueba del pipeline? [s/N] " again
+again=n
+if [ "${1:-}" = "--relanzar" ]; then again=s; else read -rp "¿Relanzar ahora la corrida de prueba del pipeline? [s/N] " again; fi
 if [[ "$again" =~ ^[sS]$ ]]; then
   systemctl start --no-block sportland-daily.service
   echo "Corriendo en segundo plano. Avance: tail -f $APP/logs/daily.log"
