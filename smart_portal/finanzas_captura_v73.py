@@ -1,4 +1,4 @@
-"""Captura de finanzas (v7.3): caja, pagos programados y deudas, directo en el portal.
+"""Captura de finanzas (v7.3): caja, pagos programados, deudas y ventas por mes (v7.5).
 
 Sustituye las pestañas Caja externa, Próximos pagos y Deudas de la hoja de finanzas.
 Cada sección se guarda completa o no se guarda (para corregir sin perder lo escrito) y
@@ -229,7 +229,73 @@ def guardar_deudas(conn, form: dict[str, list[str]], *, actor: str) -> SectionRe
     return result
 
 
-SAVERS: dict[str, Callable[..., SectionResult]] = {"caja": guardar_caja, "pagos": guardar_pagos, "deudas": guardar_deudas}
+SALES_MONTHS_SHOWN = 15
+
+
+def _sales_months(today: date) -> list[tuple[int, int]]:
+    """Meses cerrados, del más reciente hacia atrás (el mes en curso aún no se captura)."""
+    out = []
+    y, m = today.year, today.month
+    for _ in range(SALES_MONTHS_SHOWN):
+        m -= 1
+        if m == 0:
+            y, m = y - 1, 12
+        out.append((y, m))
+    return out
+
+
+def guardar_ventas(conn, form: dict[str, list[str]], *, actor: str) -> SectionResult:
+    """Ventas totales del mes (efectivo + tarjeta + plataformas), base de la estacionalidad."""
+    result = SectionResult()
+    parsed = []
+    allowed = set(_sales_months(_today()))
+    for row in _form_rows(form, "ventas", ("id", "mes", "efectivo", "tarjeta", "plataformas", "total")):
+        rid = _record_id(row["id"])
+        if not any(row[k] for k in ("efectivo", "tarjeta", "plataformas", "total")):
+            continue
+        errors: list[str] = []
+        try:
+            year, month = (int(x) for x in row["mes"].split("-"))
+        except ValueError:
+            year = month = 0
+        if (year, month) not in allowed:
+            errors.append("Mes inválido.")
+        parts = [_money(row[k], errors, label=k, required=False) for k in ("efectivo", "tarjeta", "plataformas")]
+        total = _money(row["total"], errors, label="el total", required=False)
+        known = [x for x in parts if x is not None]
+        if total is None:
+            total = sum(known, Decimal(0)) if known else None
+        elif len(known) == 3 and sum(known, Decimal(0)) != total:
+            errors.append("El total no coincide con efectivo + tarjeta + plataformas (déjalo vacío y se suma solo).")
+        if total is not None and total <= 0:
+            errors.append("El total del mes debe ser mayor a cero.")
+        if errors:
+            result.errors[int(row["_i"])] = errors
+            continue
+        values = {"year": year, "month": month, "cash_mxn": parts[0], "card_mxn": parts[1],
+                  "platforms_mxn": parts[2], "total_mxn": total, "source": "portal"}
+        if rid is None:
+            # Si el mes ya existe (otra pestaña, importación) se actualiza ese registro.
+            existing = conn.execute("SELECT sales_id FROM finance_monthly_sales WHERE year = %s AND month = %s", (year, month)).fetchone()
+            rid = existing["sales_id"] if existing else None
+        if rid is not None:
+            current = conn.execute(
+                "SELECT cash_mxn, card_mxn, platforms_mxn, total_mxn FROM finance_monthly_sales WHERE sales_id = %s", (rid,)
+            ).fetchone()
+            if current and all(_same(current[c], values[c]) for c in current.keys()):
+                continue  # sin cambios: se conserva el origen (hoja o portal)
+        parsed.append((rid, values))
+    if result.ok:
+        with conn.transaction():
+            _save(conn, table="finance_monthly_sales", key="sales_id",
+                  columns=("year", "month", "cash_mxn", "card_mxn", "platforms_mxn", "total_mxn", "source"),
+                  rows=parsed, actor=actor, result=result)
+    return result
+
+
+SAVERS: dict[str, Callable[..., SectionResult]] = {
+    "caja": guardar_caja, "pagos": guardar_pagos, "deudas": guardar_deudas, "ventas": guardar_ventas,
+}
 
 
 # ---------- Render ----------
@@ -361,6 +427,42 @@ def render_finanzas_captura(
           <td>{_select(f'deudas_estado_{i}', DEBT_STATUSES, _values(f, 'deudas', 'estado', i, d['status'] if d else 'activa'))}</td>
         </tr>""")
 
+    # Ventas por mes
+    MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+    months = _sales_months(today)
+    oldest = min(months)
+    sales = {(r["year"], r["month"]): r for r in conn.execute(
+        "SELECT sales_id, year, month, cash_mxn, card_mxn, platforms_mxn, total_mxn, source FROM finance_monthly_sales WHERE (year, month) >= (%s, %s)",
+        (oldest[0] - 1, oldest[1]),
+    ).fetchall()}
+    f = failed("ventas")
+    venta_rows = []
+    missing_sales = []
+    for i, (y, m) in enumerate(months):
+        r = sales.get((y, m))
+        prev = sales.get((y - 1, m))
+        if r is None:
+            missing_sales.append(f"{MESES[m - 1]} {y}")
+        change = ""
+        if r and prev and prev["total_mxn"]:
+            pct = float(r["total_mxn"]) / float(prev["total_mxn"]) - 1
+            change = f"<span style='color:{'#05603a' if pct >= 0 else '#b42318'}'>{pct:+.0%}</span>"
+        origin = {"hoja_ventas": "hoja", "portal": "portal"}.get(r["source"], "") if r else "falta"
+        venta_rows.append(f"""
+        <tr class="{'fc-error' if f is not None and i in errors else ('fc-new' if r is None else '')}">
+          <td style="padding:12px 8px;white-space:nowrap"><input type="hidden" name="ventas_id_{i}" value="{r['sales_id'] if r else ''}"><input type="hidden" name="ventas_mes_{i}" value="{y}-{m:02d}"><b>{MESES[m - 1].capitalize()} {y}</b>{_err_cell(errors if f is not None else {}, i)}</td>
+          <td>{_input(f'ventas_efectivo_{i}', _values(f, 'ventas', 'efectivo', i, r['cash_mxn'] if r else ''), attrs="inputmode='decimal' placeholder='$'")}</td>
+          <td>{_input(f'ventas_tarjeta_{i}', _values(f, 'ventas', 'tarjeta', i, r['card_mxn'] if r else ''), attrs="inputmode='decimal' placeholder='$'")}</td>
+          <td>{_input(f'ventas_plataformas_{i}', _values(f, 'ventas', 'plataformas', i, r['platforms_mxn'] if r else ''), attrs="inputmode='decimal' placeholder='$'")}</td>
+          <td>{_input(f'ventas_total_{i}', _values(f, 'ventas', 'total', i, r['total_mxn'] if r else ''), attrs="inputmode='decimal' placeholder='Se suma solo'")}</td>
+          <td style="padding:12px 8px;color:#667085;white-space:nowrap">{money(prev['total_mxn']) if prev else '—'} {change}</td>
+          <td style="padding:12px 8px;color:#667085">{origin}</td>
+        </tr>""")
+    sales_warning = ""
+    if missing_sales:
+        sales_warning = (f"<div class='fc-msg fc-bad'>Faltan las ventas de <b>{esc(', '.join(missing_sales[:4]))}</b>"
+                         f"{' y otros' if len(missing_sales) > 4 else ''}. Sin ellas la proyección de temporada usa meses más viejos.</div>")
+
     creditors = sorted({r["creditor"] for r in debts} | {r["creditor"] for r in payments if r["creditor"]})
     datalist = "".join(f"<option value='{esc(c)}'></option>" for c in creditors)
 
@@ -382,7 +484,7 @@ def render_finanzas_captura(
     content = f"""
     {CSS}
     <div class="section-title"><h2>Captura de finanzas</h2><span>Sustituye las pestañas Caja externa, Próximos pagos y Deudas de la hoja.</span></div>
-    <div class="fc-nav"><a href="#caja">Caja</a><a href="#pagos">Pagos programados</a><a href="#deudas">Deudas</a><a href="/finance">Ver proyección →</a></div>
+    <div class="fc-nav"><a href="#caja">Caja</a><a href="#pagos">Pagos programados</a><a href="#deudas">Deudas</a><a href="#ventas">Ventas por mes</a><a href="/finance">Ver proyección →</a></div>
     {message}
     <div class="fc-kpis">
       <div class="fc-kpi"><div class="k">CAJA DISPONIBLE</div><div class="v">{money(cash.get('total') or 0)}</div><div class="n">Efectivo {money(cash.get('cash') or 0)} · cuentas {money(cash.get('accounts') or 0)}</div></div>
@@ -397,6 +499,9 @@ def render_finanzas_captura(
                 ['Fecha', 'Concepto', 'Acreedor', 'Monto', 'Estado', 'Cuenta / referencia', 'Categoría'], pago_rows, len(pago_rows))}
     {form_block('deudas', 'Deudas', 'Saldo vigente por acreedor. Márcala Liquidada cuando ya no se deba nada.',
                 ['Acreedor', 'Saldo actual', 'Estado'], deuda_rows, len(deuda_rows))}
+    {sales_warning if section != 'ventas' or (result and result.ok) else ''}
+    {form_block('ventas', 'Ventas por mes', 'Total vendido cada mes (efectivo + tarjeta + plataformas), como la pestaña Ventas. Con esto se compara contra años anteriores y se proyecta la temporada.',
+                ['Mes', 'Efectivo', 'Tarjeta', 'Plataformas', 'Total del mes', 'Mismo mes año pasado', 'Origen'], venta_rows, len(venta_rows))}
     {extra_html}
     """
     return base_page("Captura de finanzas", content)

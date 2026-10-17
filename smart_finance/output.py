@@ -85,6 +85,8 @@ def write_dashboard(
         ("Caja disponible", _money(k.get("cash_available")), "Efectivo + cuentas", "Finanzas"),
         ("Pagos 30 días", _money(k.get("projected_obligations_30d")), "Compromisos programados", "Finanzas"),
         ("Cobertura de caja", f"{(k.get('cash_coverage_ratio') or 0):.2f}x", f"Brecha {_money(k.get('projected_cash_gap'))}", "Hybrid"),
+        ("Ventas esperadas (temporada)", _money(k.get("expected_sales_horizon_low")), f"Conservador · base {_money(k.get('expected_sales_horizon_base'))}", "Historial mensual"),
+        ("Brecha con ventas esperadas", _money(k.get("projected_cash_gap_with_sales")), f"Vs año pasado {_pct(k.get('sales_change_vs_last_year'))}", "Hybrid"),
         ("Deuda conocida", _money(k.get("known_debt_total")), f"Servicio {_money(k.get('scheduled_debt_service'))}", "Finanzas"),
         ("Inventario", f"{k.get('inventory_units') or 0} uds", f"Costo conocido {_money(k.get('inventory_cost_value_known'))}", "Shopify"),
         ("Valor retail inventario", _money(k.get("inventory_retail_value")), f"Sin costo: {k.get('inventory_missing_cost_units') or 0} uds", "Shopify"),

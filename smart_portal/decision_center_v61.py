@@ -220,6 +220,50 @@ def collect_decision_context(conn, project_root: Path) -> dict[str, Any]:
     return context
 
 
+SEASON_PEAK_RATIO = 1.5
+
+
+def _season_recommendation(fc: dict[str, Any]) -> "Recommendation | None":
+    """Avisa de un mes fuerte en los próximos 2 meses (base ≥ 1.5× el promedio reciente)."""
+    recent = _num(fc.get("recent_avg"), 0.0)
+    if recent <= 0:
+        return None
+    upcoming = [m for m in (fc.get("months") or [])[:3] if m.get("base")]
+    peaks = [m for m in upcoming[1:3] if _num(m["base"]) >= SEASON_PEAK_RATIO * recent]
+    if not peaks:
+        return None
+    peak = peaks[0]
+    evidence = [
+        f"{str(peak['label']).capitalize()}: base {money(peak['base'])}, conservador {money(peak['low'])}"
+        f" ({_num(peak['base']) / recent:.1f}× el promedio reciente de {money(recent)}).",
+    ]
+    if peak.get("last_year"):
+        evidence.append(f"Mismo mes del año pasado: {money(peak['last_year'])}.")
+    trend = fc.get("trend") or {}
+    if trend:
+        evidence.append(f"Este año va {(_num(trend.get('raw'), 1.0) - 1) * 100:+.0f}% contra el año pasado ({', '.join(trend.get('months') or [])}).")
+    bt = fc.get("backtest") or {}
+    if bt.get("n"):
+        evidence.append(f"Error medio del modelo en {bt['n']} meses pasados: {_num(bt.get('mape')) * 100:.0f}% (nov-dic {_num(bt.get('peak_mape')) * 100:.0f}%).")
+    missing = fc.get("missing_months") or []
+    confidence = "MEDIUM" if missing or not fc.get("band_calibrated") else "HIGH"
+    if missing:
+        evidence.append(f"Faltan ventas de {', '.join(missing)}: captúralas para afinar la proyección.")
+    return Recommendation(
+        key="finance-season-peak",
+        priority="HIGH",
+        score=88,
+        confidence=confidence,
+        category="FINANCE",
+        title=f"Preparar inventario para {peak['label']}: temporada alta",
+        summary="El historial muestra que este mes vende mucho más que el resto. Asegura tallas y modelos de mayor rotación con anticipación, sin pasar del escenario conservador de ventas al comprometer caja.",
+        evidence=tuple(evidence[:5]),
+        action_label="Ver proyección por temporada",
+        action_url="/finance#temporada",
+        source=("Finance", "Historial de ventas"),
+    )
+
+
 def build_recommendations(context: dict[str, Any]) -> list[Recommendation]:
     recs: list[Recommendation] = []
 
@@ -281,6 +325,9 @@ def build_recommendations(context: dict[str, Any]) -> list[Recommendation]:
             evidence.append(f"Cobertura de caja: {_num(cash_coverage):.2f}x.")
         if projected_gap is not None:
             evidence.append(f"Brecha de caja proyectada: {money(projected_gap)}.")
+        gap_with_sales = kpis.get("projected_cash_gap_with_sales")
+        if gap_with_sales is not None:
+            evidence.append(f"Con ventas esperadas por temporada (conservador): {money(gap_with_sales)}.")
         recs.append(Recommendation(
             key="finance-protect-liquidity",
             priority="HIGH",
@@ -310,6 +357,11 @@ def build_recommendations(context: dict[str, Any]) -> list[Recommendation]:
             action_url="/finance",
             source=("Finance",),
         ))
+
+    # 2b) Temporada alta en los próximos meses según el historial de ventas.
+    season = _season_recommendation(finance.get("seasonal_forecast") or {})
+    if season:
+        recs.append(season)
 
     # 3) Demand + inventory.
     for index, row in enumerate(demand_groups[:5]):

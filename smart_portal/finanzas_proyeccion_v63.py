@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from calendar import monthrange
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 import json
@@ -93,6 +95,85 @@ def inferir_finanzas(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+DIAS_SERIE = 180
+
+
+def serie_diaria(snapshot: dict[str, Any], ventas_30d: float, hoy: date, dias: int = DIAS_SERIE) -> tuple[list[float], int]:
+    """Venta esperada por día. Con historial usa la proyección por temporada del mes
+    (escenario base); sin historial, el ritmo plano de los últimos 30 días."""
+    fc = snapshot.get("seasonal_forecast") or {}
+    por_mes = {(m["year"], m["month"]): m.get("base") for m in fc.get("months") or []}
+    serie, dias_temporada = [], 0
+    for d in range(dias):
+        dia = hoy + timedelta(days=d)
+        base = por_mes.get((dia.year, dia.month))
+        if base is None:
+            serie.append(round(ventas_30d / 30, 2))
+        else:
+            serie.append(round(base / monthrange(dia.year, dia.month)[1], 2))
+            dias_temporada += 1
+    return serie, dias_temporada
+
+
+def _pct(value: Any) -> str:
+    try:
+        return f"{float(value):+.0%}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def render_temporada(fc: dict[str, Any]) -> str:
+    """Tabla de la proyección por mes contra años anteriores y qué tan confiable es."""
+    if not fc or not fc.get("months"):
+        return """
+  <div class="panel full" id="temporada">
+    <h2>Temporada</h2>
+    <div class="callout">Todavía no hay historial de ventas por mes. Captúralo en <a href="/finanzas/captura#ventas">Captura de finanzas → Ventas por mes</a>
+    o impórtalo de la pestaña Ventas; mientras tanto la proyección usa el ritmo de los últimos 30 días.</div>
+  </div>"""
+    filas = []
+    for m in fc["months"]:
+        vs = (m["base"] / m["last_year"] - 1) if m.get("base") and m.get("last_year") else None
+        filas.append(f"""<tr>
+          <td><b>{esc(str(m['label']).capitalize())}</b></td>
+          <td>{money(m['low']) if m.get('low') is not None else '—'}</td>
+          <td><b>{money(m['base']) if m.get('base') is not None else '—'}</b></td>
+          <td>{money(m['high']) if m.get('high') is not None else '—'}</td>
+          <td>{money(m['last_year']) if m.get('last_year') else '—'} <span style="color:#667085">{_pct(vs) if vs is not None else ''}</span></td>
+          <td>{money(m['two_years_ago']) if m.get('two_years_ago') else '—'}</td>
+          <td>{f"{m['seasonal_index']:.2f}×" if m.get('seasonal_index') else '—'}</td>
+        </tr>""")
+    trend = fc.get("trend") or {}
+    bt = fc.get("backtest") or {}
+    avisos = []
+    if fc.get("missing_months"):
+        avisos.append(f"<b>Faltan las ventas de {esc(', '.join(fc['missing_months']))}.</b> "
+                      "La tendencia se calcula con los últimos meses que sí tienen dato; "
+                      "<a href='/finanzas/captura#ventas'>captúralos aquí</a> para afinarla.")
+    if trend:
+        avisos.append(f"Este año va <b>{_pct(trend.get('raw', 1) - 1)}</b> contra el año pasado "
+                      f"({esc(', '.join(trend.get('months') or []))}: {money(trend.get('current_total'))} vs {money(trend.get('previous_total'))}).")
+    if bt.get("n"):
+        avisos.append(
+            f"<b>Precisión probada:</b> proyectando cada uno de {bt['n']} meses pasados solo con lo que se sabía antes, "
+            f"el error medio fue {bt['mape']:.0%} (noviembre-diciembre {bt['peak_mape']:.0%}). "
+            f"El método anterior (ritmo reciente) se equivocaba {bt['naive_mape']:.0%} (noviembre-diciembre {bt['peak_naive_mape']:.0%})."
+            + (f" La venta real quedó arriba del escenario conservador en {bt['above_low_pct']:.0%} de los meses." if bt.get("above_low_pct") is not None else ""))
+    return f"""
+  <div class="panel full" id="temporada">
+    <h2>Temporada: próximos meses contra años anteriores</h2>
+    <div class="hint">Ventas totales de la tienda (efectivo + tarjeta + plataformas). Historial desde {esc(fc.get('history_from') or '—')}; último mes con dato: {esc(fc.get('last_month_with_data') or '—')}.</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:640px">
+      <thead><tr style="text-align:left;color:#475467"><th>Mes</th><th>Conservador</th><th>Base</th><th>Optimista</th><th>Año pasado</th><th>Hace 2 años</th><th>Peso del mes</th></tr></thead>
+      <tbody>{''.join(filas)}</tbody>
+    </table></div>
+    <div class="callout" style="margin-top:12px">{'<br>'.join(avisos)}<br>
+      <span class="fin-note">Base = promedio de dos cálculos: mismo mes del año pasado × tendencia del año, y peso histórico del mes × nivel actual de ventas.
+      Conservador y optimista salen de los aciertos y errores reales del modelo en meses pasados. "Peso del mes" 2.0× = ese mes vende el doble de un mes normal.</span>
+    </div>
+  </div>"""
+
+
 def _valor_js(value: float | None, fallback: float) -> str:
     return str(round(value if value is not None else fallback, 2))
 
@@ -126,6 +207,15 @@ def render_finanzas_proyeccion(project_root: Path) -> str:
     )
 
     ticket_texto = money(ticket) if ticket is not None else "—"
+    fc = snapshot.get("seasonal_forecast") or {}
+    serie, dias_temporada = serie_diaria(snapshot, ventas_30d, date.today())
+    con_temporada = dias_temporada > 0
+    vs_anio = (snapshot.get("kpis") or {}).get("sales_change_vs_last_year")
+    como_se_calcula = (
+        "demanda probable = venta esperada de cada mes según la temporada (historial de años anteriores) × factor de demanda."
+        if con_temporada else
+        "demanda probable = ventas 30d × horizonte × factor de demanda (sin historial por mes todavía)."
+    )
 
     contenido = f"""
 <style>
@@ -172,6 +262,11 @@ def render_finanzas_proyeccion(project_root: Path) -> str:
     <div class="nt">Calculado con ventas y pedidos de 30 días, cuando ambos están disponibles.</div>
   </div>
   <div class="fin-kpi">
+    <div class="et">VS AÑO PASADO</div>
+    <div class="vl">{_pct(vs_anio) if vs_anio is not None else "—"}</div>
+    <div class="nt">Últimos meses completos contra los mismos meses del año anterior.</div>
+  </div>
+  <div class="fin-kpi">
     <div class="et">VENTA PROBABLE</div>
     <div class="vl" id="kpiVentaProbable">—</div>
     <div class="nt" id="kpiVentaNota">Escenario base.</div>
@@ -212,7 +307,7 @@ def render_finanzas_proyeccion(project_root: Path) -> str:
 
     <div class="callout">
       <b>Cómo se calcula:</b><br>
-      demanda probable = ventas 30d × horizonte × factor de demanda.<br>
+      {como_se_calcula}<br>
       La venta proyectada nunca puede superar la capacidad de venta del inventario.
     </div>
   </div>
@@ -238,6 +333,8 @@ def render_finanzas_proyeccion(project_root: Path) -> str:
     </div>
   </div>
 
+  {render_temporada(fc)}
+
   <div class="panel full">
     <h2>Lectura ejecutiva</h2>
     <div id="lectura" class="callout">Calculando escenario...</div>
@@ -253,6 +350,11 @@ def render_finanzas_proyeccion(project_root: Path) -> str:
 <script>
 (() => {{
   const ventas30 = {_valor_js(ventas_30d, 0)};
+  const diario = {json.dumps(serie)};
+  const conTemporada = {'true' if con_temporada else 'false'};
+  const acumulado = [0];
+  diario.forEach(v => acumulado.push(acumulado[acumulado.length - 1] + v));
+  const demandaHasta = d => acumulado[Math.min(Math.round(d), diario.length)];
   const fmt = new Intl.NumberFormat('es-MX', {{style:'currency', currency:'MXN', maximumFractionDigits:0}});
 
   const inv = document.getElementById('inventario');
@@ -275,7 +377,7 @@ def render_finanzas_proyeccion(project_root: Path) -> str:
   function ventasEscenario(mult) {{
     const dias = Number(hor.value);
     const demanda = Number(dem.value) / 100;
-    const demandaPeriodo = ventas30 * (dias / 30) * demanda * mult;
+    const demandaPeriodo = demandaHasta(dias) * demanda * mult;
     return Math.min(demandaPeriodo, capacidadVenta());
   }}
 
@@ -283,11 +385,11 @@ def render_finanzas_proyeccion(project_root: Path) -> str:
     const dias = Number(hor.value);
     const puntos = [];
     for (let d = 0; d <= dias; d += Math.max(5, dias/12)) {{
-      const demanda = ventas30 * (d / 30) * (Number(dem.value)/100) * mult;
+      const demanda = demandaHasta(d) * (Number(dem.value)/100) * mult;
       puntos.push([d, Math.min(demanda, capacidadVenta())]);
     }}
     if (puntos[puntos.length-1][0] !== dias) {{
-      const demanda = ventas30 * (dias / 30) * (Number(dem.value)/100) * mult;
+      const demanda = demandaHasta(dias) * (Number(dem.value)/100) * mult;
       puntos.push([dias, Math.min(demanda, capacidadVenta())]);
     }}
     return puntos;
@@ -358,13 +460,14 @@ def render_finanzas_proyeccion(project_root: Path) -> str:
     $('kpiVentaNota').textContent = `Escenario base a ${{dias}} días`;
 
     const capacidad = capacidadVenta();
-    const demandaBase = ventas30 * (dias/30) * (demandaPct/100);
-    const coberturaMeses = ventas30 > 0 ? capacidad / ventas30 : 0;
+    const demandaBase = demandaHasta(dias) * (demandaPct/100);
+    const ritmoMensual = dias > 0 ? demandaHasta(dias) / dias * 30 : ventas30;
+    const coberturaMeses = ritmoMensual > 0 ? capacidad / ritmoMensual : 0;
     const remanente = Math.max(0, capacidad - b);
     const limitado = demandaBase > capacidad;
 
     let texto = '';
-    if (ventas30 <= 0) {{
+    if (!conTemporada && ventas30 <= 0) {{
       texto = '<b>No hay ventas de 30 días suficientes para una proyección confiable.</b> Ajusta el modelo solo como simulación.';
     }} else if (limitado) {{
       texto = `<b>El inventario es el límite principal del escenario base.</b> Con los supuestos actuales, la demanda potencial sería ${{fmt.format(demandaBase)}}, pero el inventario permite aproximadamente ${{fmt.format(capacidad)}} en ventas. Cobertura aproximada: ${{coberturaMeses.toFixed(1)}} meses.`;

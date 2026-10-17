@@ -13,6 +13,7 @@ except ImportError:
 from smart_finance.config import FinanceConfig
 from smart_finance.decisions import build_sku_decisions, load_demand_matches
 from smart_finance.metrics import compute_health_score, compute_snapshot
+from smart_finance.seasonality import calibrated_forecast, load_monthly_sales, snapshot_kpis
 from smart_finance.output import write_dashboard, write_json, write_kpis_csv, write_rows_csv
 from smart_finance.parsers import (
     parse_cash_position,
@@ -126,6 +127,22 @@ def main() -> int:
             "order_records": len(orders),
         }
 
+    # Estacionalidad: ventas por mes de años anteriores (finance_monthly_sales).
+    seasonal = None
+    try:
+        if args.fixture:
+            history = {(r["year"], r["month"]): float(r["total"]) for r in fixture.get("monthly_sales", [])}
+        else:
+            from smart_memory.config import MemoryConfig
+            from smart_memory.db import connect
+
+            with connect(MemoryConfig.from_env()) as conn:
+                history = load_monthly_sales(conn)
+        if history:
+            seasonal = calibrated_forecast(history, date.today())
+    except Exception as exc:  # la estacionalidad nunca debe tumbar el cálculo financiero
+        print(f"   aviso: sin estacionalidad ({type(exc).__name__}: {exc})")
+
     print("4/5 Computing hybrid KPIs and SKU decisions...")
     snapshot = compute_snapshot(
         shopify=shopify,
@@ -139,6 +156,16 @@ def main() -> int:
     if cfg.source == "db":
         # compute_snapshot etiqueta estas fuentes como hoja; aquí vienen de la captura del portal.
         snapshot.setdefault("data_sources", {}).update(cash="portal_db", debt="portal_db", obligations="portal_db")
+    if seasonal:
+        snapshot["seasonal_forecast"] = seasonal
+        snapshot["kpis"].update(snapshot_kpis(
+            seasonal,
+            as_of=date.today(),
+            horizon_days=cfg.horizon_days,
+            cash=snapshot["kpis"].get("cash_available"),
+            obligations=snapshot["kpis"].get("projected_obligations_30d") or 0,
+        ))
+        snapshot.setdefault("data_sources", {})["sales_history"] = "portal_db"
     health = compute_health_score(snapshot)
     snapshot["financial_health"] = health
 
@@ -166,6 +193,11 @@ def main() -> int:
     print(f"Cash (Finanzas): {k['cash_available']}")
     print(f"30d obligations (Finanzas): {k['projected_obligations_30d']}")
     print(f"Known debt (Finanzas): {k['known_debt_total']}")
+    if seasonal:
+        print(f"Expected sales {cfg.horizon_days}d (season, conservative/base): {k.get('expected_sales_horizon_low')} / {k.get('expected_sales_horizon_base')}")
+        print(f"Cash gap with expected sales (conservative): {k.get('projected_cash_gap_with_sales')}")
+        if seasonal.get("missing_months"):
+            print("Sales history missing months: " + ", ".join(seasonal["missing_months"]))
     print(f"Artifacts: {out_dir.resolve()}")
     return 0
 

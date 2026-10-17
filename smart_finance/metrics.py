@@ -149,7 +149,13 @@ def compute_health_score(snapshot: dict[str, Any]) -> dict[str, Any]:
     k = snapshot["kpis"]
     cov = k.get("cash_coverage_ratio")
     liquidity = clamp((cov or 0) * 100) if cov is not None else None
-    change = k.get("sales_change_vs_previous_30d")
+    # Contra el mismo periodo del año pasado cuando hay historial: 30d vs 30d previos
+    # confunde la temporada (noviembre siempre "sube" y enero siempre "cae").
+    change = k.get("sales_change_vs_last_year")
+    trend_basis = "same_months_last_year"
+    if change is None:
+        change = k.get("sales_change_vs_previous_30d")
+        trend_basis = "previous_30d"
     sales_trend = clamp(50 + 100 * change) if change is not None else None
     margin = _linear_score(k.get("gross_margin_pct_30d"), good=0.35, bad=0.10, inverse=False)
     debt_service = _linear_score(k.get("debt_service_ratio"), good=0.10, bad=0.50, inverse=True)
@@ -159,7 +165,7 @@ def compute_health_score(snapshot: dict[str, Any]) -> dict[str, Any]:
     components = {
         "liquidity": {"score": liquidity, "weight": 0.30},
         "gross_margin": {"score": margin, "weight": 0.20},
-        "sales_trend": {"score": sales_trend, "weight": 0.15},
+        "sales_trend": {"score": sales_trend, "weight": 0.15, "basis": trend_basis},
         "debt_service": {"score": debt_service, "weight": 0.15},
         "interest_burden": {"score": interest, "weight": 0.10},
         "inventory_velocity": {"score": st, "weight": 0.10},
