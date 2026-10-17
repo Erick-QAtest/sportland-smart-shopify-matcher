@@ -35,3 +35,12 @@ class GoogleSheetsReader:
         response = self.session.get(url, timeout=30)
         response.raise_for_status()
         return response.json().get("values", [])
+
+    def sheet_titles(self) -> list[str]:
+        url = (
+            f"https://sheets.googleapis.com/v4/spreadsheets/{self.spreadsheet_id}"
+            "?fields=sheets.properties.title"
+        )
+        response = self.session.get(url, timeout=30)
+        response.raise_for_status()
+        return [s["properties"]["title"] for s in response.json().get("sheets", [])]
