@@ -25,7 +25,8 @@ from smart_portal.centro_decisiones_v62 import (
     render_recomendaciones,
 )
 from smart_commerce.amazon_v62 import render_amazon
-from smart_commerce.marketing_v62 import render_calendario, render_whatsapp
+from smart_commerce.marketing_v62 import render_whatsapp
+from smart_portal import marketing_v80
 from smart_portal.finanzas_proyeccion_v63 import render_finanzas_proyeccion
 from smart_portal.auth_v70 import (
     AuthConfig,
@@ -69,7 +70,7 @@ CUSTOMER_ROUTES = {
 
 def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "SportlandSmartPortal/7.1"
+        server_version = "SportlandSmartPortal/8.0"
 
         def send_html(
             self,
@@ -251,9 +252,12 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
                         self.send_html(render_amazon(conn))
                     return
 
-                if route == "/marketing":
+                if route in marketing_v80.GET_ROUTES:
                     with connect(cfg) as conn:
-                        self.send_html(render_calendario(conn))
+                        status, html = marketing_v80.handle_get(
+                            conn, route, query, csrf=self._csrf_token()
+                        )
+                    self.send_html(html, status=status)
                     return
 
                 if route == "/whatsapp-borradores":
@@ -336,7 +340,12 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
             parsed = urlparse(self.path)
             route = parsed.path.rstrip("/") or "/"
 
-            body_limit = 262144 if route == "/registro" or route.startswith("/finanzas/captura/") else 16384
+            if route == "/registro" or route.startswith("/finanzas/captura/"):
+                body_limit = 262144
+            elif route in marketing_v80.POST_ROUTES:
+                body_limit = 65536
+            else:
+                body_limit = 16384
             try:
                 length = min(
                     int(self.headers.get("Content-Length", "0") or 0),
@@ -390,7 +399,11 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
                 return
 
             finanzas_section = route.removeprefix("/finanzas/captura/") if route.startswith("/finanzas/captura/") else None
-            if route not in {"/impacto/estado", "/impacto/resultado", "/registro", "/cerrar-dia"} and finanzas_section not in FINANZAS_SAVERS:
+            if (
+                route not in {"/impacto/estado", "/impacto/resultado", "/registro", "/cerrar-dia"}
+                and route not in marketing_v80.POST_ROUTES
+                and finanzas_section not in FINANZAS_SAVERS
+            ):
                 self.send_html(
                     "<!doctype html><html><body><h1>405</h1><p>Método no permitido.</p></body></html>",
                     status=405,
@@ -407,6 +420,10 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
 
             if route == "/registro":
                 self._handle_registro(form)
+                return
+
+            if route in marketing_v80.POST_ROUTES:
+                self._handle_marketing(route, form)
                 return
 
             if finanzas_section in FINANZAS_SAVERS:
@@ -489,6 +506,24 @@ def build_handler(cfg: MemoryConfig, project_root: Path, auth_cfg: AuthConfig):
                     status=500,
                 )
 
+        def _handle_marketing(self, route: str, form: dict[str, list[str]]) -> None:
+            actor = auth_cfg.username if auth_cfg.enabled and auth_cfg.username else "portal"
+            try:
+                with connect(cfg) as conn:
+                    kind, status, payload = marketing_v80.handle_post(
+                        conn, route, form, actor=actor, csrf=self._csrf_token()
+                    )
+                if kind == "redirect":
+                    self.redirect(payload)
+                else:
+                    self.send_html(payload, status=status)
+            except Exception as exc:
+                print(f"[portal] marketing {route} failed: {type(exc).__name__}: {exc}")
+                self.send_html(
+                    "<!doctype html><html><body style='font-family:system-ui;padding:30px'><h1>Sportland Smart</h1><p>No se pudo guardar. No se cambió nada.</p><p><a href='/marketing'>Volver a Marketing</a></p></body></html>",
+                    status=500,
+                )
+
         def _cierre_panel(self, return_to: str, query: dict[str, list[str]]) -> str:
             return render_cierre_panel(
                 project_root,
@@ -530,7 +565,7 @@ def main() -> int:
     load_dotenv(project_root / ".env.portal", override=True)
 
     parser = argparse.ArgumentParser(
-        description="Sportland Smart Portal Administrativo v7.1"
+        description="Sportland Smart Portal Administrativo v8.0"
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8700)
@@ -564,7 +599,7 @@ def main() -> int:
 
     url = f"http://127.0.0.1:{args.port}/"
     print("")
-    print("Sportland Smart Portal Administrativo v7.1")
+    print("Sportland Smart Portal Administrativo v8.0")
     print(f"Portal: {url}")
     print("Red: aplicación enlazada solo a localhost; acceso externo únicamente mediante proxy HTTPS")
     print("Datos personales: protegidos por autenticación cuando SPORTLAND_AUTH_ENABLED=true")

@@ -171,7 +171,7 @@ def _page(title: str, active: str, content: str, subtitle: str = "") -> str:
         <div class="sub">{_esc(subtitle or "CRM + comportamiento de compra + talla habitual")}</div>
       </div>
     </div>
-    <div class="guardrail">LOCALHOST · READ-ONLY SHOPIFY<br>PII no se exporta a artifacts · sin contacto automático</div>
+    <div class="guardrail">SHOPIFY SOLO LECTURA<br>PII no se exporta a artifacts · sin contacto automático</div>
   </div>
   {_nav(active)}
   {content}

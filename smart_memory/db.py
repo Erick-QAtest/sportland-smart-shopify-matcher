@@ -51,3 +51,31 @@ def apply_migrations(
         executed.append(version)
 
     return executed
+
+
+def rollback_migration(
+    conn: Connection,
+    version: str,
+    migrations_dir: str | Path = "database/migrations",
+) -> bool:
+    """Revierte una migración aplicada con su script `down/<nombre>.down.sql`.
+
+    Corre en una sola transacción: o se revierte completa y sale del registro, o no
+    cambia nada. Devuelve False si la migración no está aplicada.
+    """
+    root = Path(migrations_dir)
+    name = version if version.endswith(".sql") else f"{version}.sql"
+    down = root / "down" / name.replace(".sql", ".down.sql")
+    if not down.exists():
+        raise FileNotFoundError(f"No existe script de reversa: {down}")
+
+    row = conn.execute(
+        "SELECT 1 FROM schema_migrations WHERE version = %s", (name,)
+    ).fetchone()
+    if not row:
+        return False
+
+    with conn.transaction():
+        conn.execute(down.read_text(encoding="utf-8"))
+        conn.execute("DELETE FROM schema_migrations WHERE version = %s", (name,))
+    return True

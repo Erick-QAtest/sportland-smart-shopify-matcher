@@ -110,7 +110,7 @@ def base_page(title: str, content: str, *, health: str = "") -> str:
           <p>Decisiones · Clientes · Finanzas · Crecimiento · Operaciones</p>
         </div>
       </div>
-      <div class="health badge {esc(health_class)}">{esc(health or "PORTAL LOCAL")}</div>
+      <div class="health badge {esc(health_class)}">{esc(health or "PORTAL")}</div>
     </div>
   </div>
   <div class="topnav">
@@ -131,7 +131,7 @@ def base_page(title: str, content: str, *, health: str = "") -> str:
     {('<a href="/salir">Salir</a>' if str(os.getenv("SPORTLAND_AUTH_ENABLED","false")).lower() in {"1","true","yes","si","sí","on"} else '')}
   </div>
   {content}
-  <div class="footer">Sportland Smart Portal v7.1 · impacto medible · acciones automáticas desactivadas</div>
+  <div class="footer">Sportland Smart Portal v8.0 · impacto medible · acciones automáticas desactivadas</div>
 </div>
 </body>
 </html>"""
